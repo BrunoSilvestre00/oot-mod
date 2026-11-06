@@ -9,7 +9,7 @@ Distributed as small IPS patches only. No game files are included.
 | Download | For screens | Target aspect |
 | --- | --- | --- |
 | [`oot-ultrawide-21x9-3440x1440.zip`](releases/oot-ultrawide-21x9-3440x1440.zip) | 3440×1440 | 2.389 (43:18) |
-| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080 | 2.370 (64:27) |
+| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080, 5120×2160 | 2.370 (64:27) |
 | [`oot-super-ultrawide-32x9.zip`](releases/oot-super-ultrawide-32x9.zip) | 5120×1440, 3840×1080 | 3.556 (32:9) |
 
 Enable **only one** at a time, since they all patch the same code.
