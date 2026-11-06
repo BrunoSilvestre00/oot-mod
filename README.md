@@ -50,7 +50,7 @@ The patch places small ARM64 routines in unused executable padding after `.text`
 | `0x3485CC0` | `sead::PerspectiveProjection::doUpdateMatrix`: if the aspect is within 0.01 of 16:9, use the target aspect and write it back to `mAspect` |
 | `0x004F1E8`, `0x023B9A8`, `0x033B82C` | Inlined copies of the same matrix builder (the game mostly uses these) |
 | `0x025D76C` | Render-view setup: the width/height aspect passed to shaders gets the same mapping |
-| `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The L/R item menu background (`UIShortCutBGScreen`) is skipped, because it redraws a capture of the whole frame |
+| `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The backgrounds of the L/R item menu, pause menu and system menu are skipped, because they redraw a capture of the whole frame |
 | `0x3B5C758` | Movie layer draw: shrink the full-target viewport to the centre `(16/9) / target` of the width |
 
 Offsets are module offsets. In the IPS32 files they are shifted by the `0x100`-byte NSO header. All routines only use registers that the original code overwrites immediately afterwards, or that are dead at that point.

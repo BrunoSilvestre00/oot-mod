@@ -35,7 +35,11 @@ def f32(x): return struct.unpack("<I", struct.pack("<f", x))[0]
 ASPECT_16_9, EPSILON = f32(16 / 9), f32(0.01)
 UI_M00, UI_M11 = f32(2 / 3840), f32(2 / 2160)  # full-screen 2D layout ortho
 SCREEN_CANVAS = 0x1B8  # offset of the 2D canvas inside every UI screen object
-SHORTCUT_BG_VTABLE = 0x4BED098  # UIShortCutBGScreen vptr (the screen whose layout is ShortCutBG_00)
+# UI screens (by vptr) whose layouts redraw a capture of the whole frame; they stay unsqueezed
+FULL_FRAME_SCREENS = (
+    0x4BED098,  # UIShortCutBGScreen: L/R item menu background (ShortCutBG_00)
+    0x4BE4FB0,  # pause and system menu backgrounds (MenuBG_00, SystemBG_00)
+)
 
 
 # Minimal A64 encoders for the instructions used below.
@@ -97,12 +101,14 @@ def fix_aspect(target, sa, wt, sp, sq, writeback=None):
 def squash_ui(squash):
     """2D canvas matrix setup, after ldp q1, q4, [x2] (x2 = row-major projection, x0 = canvas): if it
     is the full-screen 3840x2160 ortho, scale row 0 so the HUD fills the centre 16:9 of the frame.
-    UIShortCutBGScreen (L/R item menu background) is skipped: its capture pane redraws the whole
-    frozen frame, so it must keep covering the full frame."""
+    FULL_FRAME_SCREENS are skipped: their capture panes redraw the whole frozen frame, so they must
+    keep covering the full frame."""
     tail = [movz(16, squash & 0xFFFF), movk16(16, squash >> 16), dup_4s(17, 16), fmul_4s(1, 1, 17)]
     # every full-screen layout canvas is embedded in a UI screen at +0x1b8: compare that screen's vptr
-    check_bg = ([sub_x(17, 0, SCREEN_CANVAS), ldr_x(16, 17)] + adrp_add(17, SHORTCUT_BG_VTABLE)
-                + [cmp_x(16, 17), b_eq(len(tail) + 1)])
+    check_bg = [sub_x(17, 0, SCREEN_CANVAS), ldr_x(16, 17)]
+    for i, vtable in enumerate(FULL_FRAME_SCREENS):
+        later = 4 * (len(FULL_FRAME_SCREENS) - 1 - i)  # adrp, add, cmp, b.eq per remaining screen
+        check_bg += adrp_add(17, vtable) + [cmp_x(16, 17), b_eq(later + len(tail) + 1)]
     check_m11 = [umov_s1(16, 4), and_abs(16, 16), movz(17, UI_M11 & 0xFFFF), movk16(17, UI_M11 >> 16),
                  cmp_w(16, 17), b_ne(len(check_bg) + len(tail) + 1)]
     return ([ldp_q(1, 4, 2, 0), fmov_ws(16, 1), movz(17, UI_M00 & 0xFFFF), movk16(17, UI_M00 >> 16),
