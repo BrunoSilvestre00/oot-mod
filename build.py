@@ -34,6 +34,8 @@ def f32(x): return struct.unpack("<I", struct.pack("<f", x))[0]
 
 ASPECT_16_9, EPSILON = f32(16 / 9), f32(0.01)
 UI_M00, UI_M11 = f32(2 / 3840), f32(2 / 2160)  # full-screen 2D layout ortho
+SCREEN_CANVAS = 0x1B8  # offset of the 2D canvas inside every UI screen object
+SHORTCUT_BG_VTABLE = 0x4BED098  # UIShortCutBGScreen vptr (the screen whose layout is ShortCutBG_00)
 
 
 # Minimal A64 encoders for the instructions used below.
@@ -61,6 +63,18 @@ def ldr_s(st, xn, imm): return 0xBD400000 | (imm // 4) << 10 | xn << 5 | st
 def fadd(sd, sn, sm): return 0x1E202800 | sm << 16 | sn << 5 | sd
 def fmul(sd, sn, sm): return 0x1E200800 | sm << 16 | sn << 5 | sd
 def ldp_x(x1, x2, xn, imm): return 0xA9400000 | ((imm // 8) & 0x7F) << 15 | x2 << 10 | xn << 5 | x1
+def ldr_x(xt, xn): return 0xF9400000 | xn << 5 | xt
+def add_x(xd, xn, imm): return 0x91000000 | imm << 10 | xn << 5 | xd
+def cmp_x(xn, xm): return 0xEB00001F | xm << 16 | xn << 5
+def b_eq(words): return 0x54000000 | (words & 0x7FFFF) << 5
+
+
+def adrp_add(xd, target):
+    """PC-relative address of a module offset; returns words that need their own pc (resolved in edits())."""
+    def adrp(pc):
+        pages = (target >> 12) - (pc >> 12)
+        return 0x90000000 | (pages & 3) << 29 | ((pages >> 2) & 0x7FFFF) << 5 | xd
+    return [adrp, add_x(xd, xd, target & 0xFFF)]
 
 
 def branch(frm, to):
@@ -81,13 +95,18 @@ def fix_aspect(target, sa, wt, sp, sq, writeback=None):
 
 
 def squash_ui(squash):
-    """2D canvas matrix setup, after ldp q1, q4, [x2] (x2 = row-major projection): if it is the
-    full-screen 3840x2160 ortho, scale row 0 so the HUD fills the centre 16:9 of the frame."""
+    """2D canvas matrix setup, after ldp q1, q4, [x2] (x2 = row-major projection, x0 = canvas): if it
+    is the full-screen 3840x2160 ortho, scale row 0 so the HUD fills the centre 16:9 of the frame.
+    UIShortCutBGScreen (L/R item menu background) is skipped: its capture pane redraws the whole
+    frozen frame, so it must keep covering the full frame."""
     tail = [movz(16, squash & 0xFFFF), movk16(16, squash >> 16), dup_4s(17, 16), fmul_4s(1, 1, 17)]
+    # every full-screen layout canvas is embedded in a UI screen at +0x1b8: compare that screen's vptr
+    check_bg = ([sub_x(17, 0, SCREEN_CANVAS), ldr_x(16, 17)] + adrp_add(17, SHORTCUT_BG_VTABLE)
+                + [cmp_x(16, 17), b_eq(len(tail) + 1)])
     check_m11 = [umov_s1(16, 4), and_abs(16, 16), movz(17, UI_M11 & 0xFFFF), movk16(17, UI_M11 >> 16),
-                 cmp_w(16, 17)]
+                 cmp_w(16, 17), b_ne(len(check_bg) + len(tail) + 1)]
     return ([ldp_q(1, 4, 2, 0), fmov_ws(16, 1), movz(17, UI_M00 & 0xFFFF), movk16(17, UI_M00 >> 16),
-             cmp_w(16, 17), b_ne(len(check_m11) + len(tail) + 2)] + check_m11 + [b_ne(len(tail) + 1)] + tail)
+             cmp_w(16, 17), b_ne(len(check_m11) + len(check_bg) + len(tail) + 1)] + check_m11 + check_bg + tail)
 
 
 def pillarbox_movie(margin):
@@ -125,7 +144,7 @@ def edits(aspect):
     for hook, original, body, back in hooks(aspect):
         words = body + [branch(cave + 4 * len(body), back)]
         out.append((hook, original, branch(hook, cave)))
-        out += [(cave + 4 * k, 0, w) for k, w in enumerate(words)]
+        out += [(cave + 4 * k, 0, w(cave + 4 * k) if callable(w) else w) for k, w in enumerate(words)]
         cave += 4 * len(words)
     assert cave <= 0x3C47000, "caves overflow the executable padding"
     return out
