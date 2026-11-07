@@ -33,12 +33,11 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 ## What it changes
 
 - **3D:** every 16:9 camera projection is switched to the target aspect, so you see more to the sides instead of a stretched image. The new aspect is written back to the camera, so other systems that read it (e.g. culling) see the wider view too. Non-16:9 views such as cubemaps are left alone.
-- **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle, stay in the right place.
+- **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle, stay in the right place. Menu backgrounds and fade transitions still cover the whole screen.
 - **Pre-rendered videos:** drawn in the centre 16:9 area instead of being stretched.
 
 ## Known limitations
 
-- Full-screen menus and fades cover only the centre 16:9 area, so the 3D world shows at the sides. Many ultrawide PC games behave the same way.
 - Only the build ID above is supported. A game update will need new offsets.
 
 ## How it works
@@ -50,7 +49,7 @@ The patch places small ARM64 routines in unused executable padding after `.text`
 | `0x3485CC0` | `sead::PerspectiveProjection::doUpdateMatrix`: if the aspect is within 0.01 of 16:9, use the target aspect and write it back to `mAspect` |
 | `0x004F1E8`, `0x023B9A8`, `0x033B82C` | Inlined copies of the same matrix builder (the game mostly uses these) |
 | `0x025D76C` | Render-view setup: the width/height aspect passed to shaders gets the same mapping |
-| `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The backgrounds of the L/R item menu, pause menu and system menu are skipped, because they redraw a capture of the whole frame |
+| `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The backgrounds of the L/R item menu, pause menu and system menu are skipped, because they redraw a capture of the whole frame. So are the loading and cutscene fades, so they cover the sides |
 | `0x3B5C758` | Movie layer draw: shrink the full-target viewport to the centre `(16/9) / target` of the width |
 
 Offsets are module offsets. In the IPS32 files they are shifted by the `0x100`-byte NSO header. All routines only use registers that the original code overwrites immediately afterwards, or that are dead at that point.

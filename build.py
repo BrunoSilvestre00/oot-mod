@@ -39,6 +39,8 @@ SCREEN_CANVAS = 0x1B8  # offset of the 2D canvas inside every UI screen object
 FULL_FRAME_SCREENS = (
     0x4BED098,  # UIShortCutBGScreen: L/R item menu background (ShortCutBG_00)
     0x4BE4FB0,  # pause and system menu backgrounds (MenuBG_00, SystemBG_00)
+    0x4BE7B30,  # area loading fade (LoadingFade_00)
+    0x4BE61C8,  # cutscene fades (EventFade_00, EventSkipFade_00)
 )
 
 
