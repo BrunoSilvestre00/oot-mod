@@ -35,7 +35,7 @@ def f32(x): return struct.unpack("<I", struct.pack("<f", x))[0]
 ASPECT_16_9, EPSILON = f32(16 / 9), f32(0.01)
 UI_M00, UI_M11 = f32(2 / 3840), f32(2 / 2160)  # full-screen 2D layout ortho
 SCREEN_CANVAS = 0x1B8  # offset of the 2D canvas inside every UI screen object
-# UI screens (by vptr) whose layouts redraw a capture of the whole frame; they stay unsqueezed
+# UI screens (by vptr) that must cover the whole frame (full-frame captures, fades); they stay unsqueezed
 FULL_FRAME_SCREENS = (
     0x4BED098,  # UIShortCutBGScreen: L/R item menu background (ShortCutBG_00)
     0x4BE4FB0,  # pause and system menu backgrounds (MenuBG_00, SystemBG_00)
@@ -103,8 +103,7 @@ def fix_aspect(target, sa, wt, sp, sq, writeback=None):
 def squash_ui(squash):
     """2D canvas matrix setup, after ldp q1, q4, [x2] (x2 = row-major projection, x0 = canvas): if it
     is the full-screen 3840x2160 ortho, scale row 0 so the HUD fills the centre 16:9 of the frame.
-    FULL_FRAME_SCREENS are skipped: their capture panes redraw the whole frozen frame, so they must
-    keep covering the full frame."""
+    FULL_FRAME_SCREENS are skipped: they must keep covering the whole frame."""
     tail = [movz(16, squash & 0xFFFF), movk16(16, squash >> 16), dup_4s(17, 16), fmul_4s(1, 1, 17)]
     # every full-screen layout canvas is embedded in a UI screen at +0x1b8: compare that screen's vptr
     check_bg = [sub_x(17, 0, SCREEN_CANVAS), ldr_x(16, 17)]
@@ -143,6 +142,9 @@ def hooks(aspect):
         (0x0774368, 0xAD401041, squash_ui(f32(squash)), 0x077436C),
         # pre-rendered movie layer draw (main+0x3B5C71C): ldp x9, x8, [x19, #24]
         (0x3B5C758, 0xA941A269, pillarbox_movie(f32((1 - squash) / 2)), 0x3B5C75C),
+        # NPC speech bubble anchor (layout x = ndc x * 1920): mov w8, #1920.0 -> 1920 / squash, so the
+        # squeezed canvas puts the bubble back over its speaker
+        (0x020C2B0, 0x52A89E08, [movz(8, f32(1920 / squash) & 0xFFFF), movk16(8, f32(1920 / squash) >> 16)], 0x020C2B4),
     ]
 
 

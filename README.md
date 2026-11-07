@@ -33,7 +33,7 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 ## What it changes
 
 - **3D:** every 16:9 camera projection is switched to the target aspect, so you see more to the sides instead of a stretched image. The new aspect is written back to the camera, so other systems that read it (e.g. culling) see the wider view too. Non-16:9 views such as cubemaps are left alone.
-- **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle, stay in the right place. Menu backgrounds and fade transitions still cover the whole screen.
+- **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle and NPC speech bubbles, stay in the right place. Menu backgrounds and fade transitions still cover the whole screen.
 - **Pre-rendered videos:** drawn in the centre 16:9 area instead of being stretched.
 
 ## Known limitations
@@ -42,7 +42,7 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 
 ## How it works
 
-The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46400`) and branches to them from seven hook sites. Each hook reruns the instruction it replaced and jumps back.
+The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46400`) and branches to them from eight hook sites. Each hook reruns the instruction it replaced and jumps back.
 
 | Hook (`main+`) | Purpose |
 | --- | --- |
@@ -51,6 +51,7 @@ The patch places small ARM64 routines in unused executable padding after `.text`
 | `0x025D76C` | Render-view setup: the width/height aspect passed to shaders gets the same mapping |
 | `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The backgrounds of the L/R item menu, pause menu and system menu are skipped, because they redraw a capture of the whole frame. So are the loading and cutscene fades, so they cover the sides |
 | `0x3B5C758` | Movie layer draw: shrink the full-target viewport to the centre `(16/9) / target` of the width |
+| `0x020C2B0` | NPC speech bubble anchor: the layout x of the speaker (`ndc.x × 1920`) is divided by the HUD squeeze, so the bubble sits over the speaker |
 
 Offsets are module offsets. In the IPS32 files they are shifted by the `0x100`-byte NSO header. All routines only use registers that the original code overwrites immediately afterwards, or that are dead at that point.
 
