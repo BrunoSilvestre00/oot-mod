@@ -7,7 +7,8 @@ by the target aspect (and written back to mAspect). The w/h aspect the renderer 
 gets the same mapping. 1:1, 4:3 etc. views are untouched.
 
 The picture the game renders (2560x1440, scene 1920x1080) takes the screen's shape: 3440x1440,
-2560x1080 or 4096x1152 (32:9; 5120x1440 ran out of the game's render-target memory and crashed).
+2560x1080, 3416x1440 (for 5120x2160) or 4096x1152 (32:9; 5120x1440 ran out of the game's render-target
+memory and crashed).
 Full-screen 2D (the 3840x2160 layout ortho, spread over the whole picture) is squeezed horizontally
 by (16/9)/target, so the HUD sits undistorted in a centred 16:9 area. Pre-rendered movies get the
 same centred 16:9 viewport.
@@ -23,10 +24,12 @@ import zipfile
 
 TITLE_ID = "0400486024DEC000"
 BUILD_ID = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348"
-VARIANTS = {  # mod folder name -> (zip file name, picture width, height); its w/h is the target display aspect
-    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440, 1440),
-    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560, 1080),
-    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 4096, 1152),  # 5120x1440 crashed: out of render-target memory
+VARIANTS = {  # mod folder name -> (zip file name, target display aspect, picture width, height)
+    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440 / 1440, 3440, 1440),
+    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560 / 1080, 2560, 1080),
+    # 64:27 at the game's own height (whole multiples of 8), so the emulator's upscale to 5120x2160 stays sharp
+    "Ultrawide 21x9 (5120x2160)": ("oot-ultrawide-21x9-5120x2160.zip", 5120 / 2160, 3416, 1440),
+    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 32 / 9, 4096, 1152),  # 5120x1440 crashed: out of render-target memory
 }
 NSO_HEADER_SIZE = 0x100
 CAVE_BASE = 0x3C46800  # zero executable padding after .text, up to 0x3C47000. Lichii's built-in
@@ -171,10 +174,10 @@ def picture_size(w, h):
     ]
 
 
-def edits(w, h):
+def edits(aspect, w, h):
     """(module offset, original word, new word)"""
     out, cave = picture_size(w, h), CAVE_BASE
-    for hook, original, body, back in hooks(w / h):
+    for hook, original, body, back in hooks(aspect):
         words = body + [branch(cave + 4 * len(body), back)]
         out.append((hook, original, branch(hook, cave)))
         out += [(cave + 4 * k, 0, w(cave + 4 * k) if callable(w) else w) for k, w in enumerate(words)]
@@ -208,8 +211,8 @@ if __name__ == "__main__":
     args = p.parse_args()
     image = args.verify_main.read_bytes() if args.verify_main else None
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    for name, (zip_name, w, h) in VARIANTS.items():
-        recs = edits(w, h)
+    for name, (zip_name, aspect, w, h) in VARIANTS.items():
+        recs = edits(aspect, w, h)
         if image:
             for offset, original, _ in recs:
                 found = struct.unpack_from("<I", image, offset)[0]
