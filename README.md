@@ -1,17 +1,16 @@
 # Ultrawide Mod for The Legend of Zelda: Ocarina of Time (Nintendo Switch 2)
 
-Play the Ocarina of Time remake in 21:9 or 32:9 on an emulator. The 3D view gets a genuinely wider field of view, while the HUD and pre-rendered videos stay at their original 16:9 proportions, centred on screen.
+Play the Ocarina of Time remake in 21:9 or 32:9 on an emulator. The game renders a wider, sharper picture, the 3D view gets a genuinely wider field of view, and the HUD and pre-rendered videos stay at their original 16:9 proportions, centred on screen.
 
 Distributed as small IPS patches only. No game files are included.
 
 ## Versions
 
-| Download | For screens | Target aspect |
-| --- | --- | --- |
-| [`oot-ultrawide-21x9-3440x1440.zip`](releases/oot-ultrawide-21x9-3440x1440.zip) | 3440×1440 | 2.389 (43:18) |
-| [`oot-ultrawide-21x9-3440x1440-native.zip`](releases/oot-ultrawide-21x9-3440x1440-native.zip) | 3440×1440, rendered at 3440×1440 (see below) | 2.389 (43:18) |
-| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080, 5120×2160 | 2.370 (64:27) |
-| [`oot-super-ultrawide-32x9.zip`](releases/oot-super-ultrawide-32x9.zip) | 5120×1440, 3840×1080 | 3.556 (32:9) |
+| Download | For screens | Target aspect | Game renders at |
+| --- | --- | --- | --- |
+| [`oot-ultrawide-21x9-3440x1440.zip`](releases/oot-ultrawide-21x9-3440x1440.zip) | 3440×1440 | 2.389 (43:18) | 3440×1440 |
+| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080, 5120×2160 | 2.370 (64:27) | 3416×1440 |
+| [`oot-super-ultrawide-32x9.zip`](releases/oot-super-ultrawide-32x9.zip) | 5120×1440, 3840×1080 | 3.556 (32:9) | 3440×1440 |
 
 Enable **only one** at a time, since they all patch the same code.
 
@@ -26,18 +25,17 @@ Enable **only one** at a time, since they all patch the same code.
 1. Download the zip for your screen from [`releases/`](releases/).
 2. In Lichii, right-click the game → **Properties → Add-Ons → Import Mod from ZIP**, select the zip and accept the suggested mod name. If you installed another version before, untick or delete it in the same list.
 3. In the same Properties window, set **Graphics → Aspect Ratio → Stretch to Window** and play fullscreen.
-   The game still renders a 16:9 frame; the emulator stretches it to your screen and the mod pre-compensates for that stretch.
-   With a **native** build the game renders the full 3440×1440 picture itself, so nothing is stretched.
+   The emulator stretches the game's picture to your screen; the mod compensates for that, so nothing looks distorted.
 4. Restart the game. The emulator log should show `Applying IPS patch from mod "<mod name>"`.
 
 For other emulators, or to install by hand, extract the zip into the emulator's `load/` directory. It contains `0400486024DEC000/<mod name>/exefs/E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348.ips`.
 
 ## What it changes
 
+- **Resolution:** the picture the game renders (2560×1440, and the 1920×1080 scene its upscaler takes in) is widened to the target aspect at the same heights, up to 3440×1440, so the 3D and the HUD look sharper. This costs GPU time: the game draws about a third more pixels. 32:9 also renders 3440×1440 and the emulator stretches it to the screen, because a 5120×1440 picture ran out of the game's render-target memory and crashed.
 - **3D:** every 16:9 camera projection is switched to the target aspect, so you see more to the sides instead of a stretched image. The new aspect is written back to the camera, so other systems that read it (e.g. culling) see the wider view too. Non-16:9 views such as cubemaps are left alone.
 - **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle and NPC speech bubbles, stay in the right place. Menu backgrounds and fade transitions still cover the whole screen.
 - **Pre-rendered videos:** drawn in the centre 16:9 area instead of being stretched.
-- **Native builds only:** the picture the game renders (2560×1440, and the 1920×1080 scene its upscaler takes in) is widened to the target aspect at the same heights, so the 3D and the HUD are drawn at the screen's real width and look sharper. These are the same three constants NX2navi (`wide_out` / `wide_scene`) and Hookshot patch: `main+0x1202EE0` and `main+0x31F39F4` (picture width, `mov x8, #2560`) and `main+0x31F3A00` (scene width, `mov x8, #1920`). The render targets grow with the width. NX2navi found that at 5120×2160 the pause menu's blur outgrew the texture heap the game sets aside for 2560×1440, so for now only 3440×1440 (+34% pixels) has a native build. It was tested on Lichii (RTX 4070 SUPER): gameplay, the pause menu and its tabs.
 
 ## Known limitations
 
@@ -45,7 +43,9 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 
 ## How it works
 
-The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46400`) and branches to them from eight hook sites. Each hook reruns the instruction it replaced and jumps back.
+The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46800`, after the space Lichii's built-in patches use) and branches to them from eight hook sites. Each hook reruns the instruction it replaced and jumps back.
+
+Three more words set the size of the picture: `main+0x1202EE0` and `main+0x31F39F4` (picture width, `mov x8, #2560`) and `main+0x31F3A00` (scene width, `mov x8, #1920`) get the target aspect's width (at most 3440×1440's), in whole multiples of 8 and 4 pixels. The heights, set by the `movk` after each, stay 1440 and 1080. These are the same constants NX2navi (`wide_out` / `wide_scene`) and Hookshot patch.
 
 | Hook (`main+`) | Purpose |
 | --- | --- |

@@ -4,15 +4,12 @@
 The game builds each sead::PerspectiveProjection matrix in sead's doUpdateMatrix or in one of
 three inlined copies of it. At every one of those sites an aspect within 0.01 of 16:9 is replaced
 by the target aspect (and written back to mAspect). The w/h aspect the renderer hands to shaders
-gets the same mapping. 1:1, 4:3 etc. views are untouched. Full-screen 2D (the 3840x2160 layout
-ortho) is squeezed horizontally by (16/9)/target, so after the emulator stretches the 16:9 frame
-to the screen the HUD sits undistorted in a centred 16:9 area. Pre-rendered movies get the same
-centred 16:9 viewport.
-
-The "native" variants also widen the picture the game renders (2560x1440, scene 1920x1080) to the
-target aspect at the same heights, so the emulator shows it 1:1 instead of stretching a 16:9 frame:
-sharper 3D and HUD. The render targets grow with the width; NX2navi found that at 5120x2160 the pause
-menu's blur outgrew the texture heap the game makes for 2560x1440, so only 3440x1440 has one for now.
+gets the same mapping. 1:1, 4:3 etc. views are untouched. The picture the game renders (2560x1440, scene 1920x1080) is widened to the target aspect at the same
+heights, up to 3440x1440, and the emulator stretches it to the screen. Full-screen 2D (the 3840x2160
+layout ortho, spread over the whole picture) is squeezed horizontally by (16/9)/target, so after that
+stretch the HUD sits undistorted in a centred 16:9 area. Pre-rendered movies get the same centred
+16:9 viewport. The render targets grow with the width: a 5120x1440 picture (32:9) ran out of the
+game's render-target memory and crashed, so 32:9 renders 3440x1440 too.
 
   python3 build.py                         # writes releases/<zip>.zip, each holding
                                            #   0400486024DEC000/<mod name>/exefs/<id>.ips
@@ -25,13 +22,13 @@ import zipfile
 
 TITLE_ID = "0400486024DEC000"
 BUILD_ID = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348"
-VARIANTS = {  # mod folder name -> (zip file name, target display aspect, native picture width or None)
-    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440 / 1440, None),
-    "Ultrawide 21x9 (3440x1440) native": ("oot-ultrawide-21x9-3440x1440-native.zip", 3440 / 1440, 3440),
-    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560 / 1080, None),
-    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 32 / 9, None),
+VARIANTS = {  # mod folder name -> (zip file name, target display aspect)
+    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440 / 1440),
+    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560 / 1080),
+    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 32 / 9),
 }
 PICTURE_H, SCENE_H = 1440, 1080  # the game's picture and scene heights (kept; only the widths grow)
+MAX_RENDER_ASPECT = 3440 / 1440  # widest picture that fits the game's render-target memory (5120x1440 crashed)
 NSO_HEADER_SIZE = 0x100
 CAVE_BASE = 0x3C46800  # zero executable padding after .text, up to 0x3C47000. Lichii's built-in
 # patches now use 0x3C46200..0x3C46494 (Dynamic FPS / FPS Unlock, texture pool, water steps,
@@ -158,11 +155,13 @@ def hooks(aspect):
     ]
 
 
-def picture_size(width):
-    """(module offset, original word, new word): the picture and scene widths. Each is a mov x8 whose
-    following movk sets the height (1440 / 1080), left alone. The same sites as NX2navi's wide_out and
-    wide_scene sets (recomp/patches-v111.txt) and Hookshot's nx2/oot_wide.py."""
-    scene = round(width * SCENE_H / PICTURE_H)
+def picture_size(aspect):
+    """(module offset, original word, new word): the picture and scene widths at the target aspect (at
+    most MAX_RENDER_ASPECT), in whole multiples of 8 / 4 pixels (3440 / 2580 at 3440x1440). Each is a mov x8 whose following movk
+    sets the height (1440 / 1080), left alone. The same sites as NX2navi's wide_out and wide_scene sets
+    (recomp/patches-v111.txt) and Hookshot's nx2/oot_wide.py."""
+    aspect = min(aspect, MAX_RENDER_ASPECT)
+    width, scene = 8 * round(PICTURE_H * aspect / 8), 4 * round(SCENE_H * aspect / 4)
     assert movz_x(8, 2560) == 0xD2814008 and movz_x(8, 1920) == 0xD280F008
     return [
         (0x1202EE0, movz_x(8, 2560), movz_x(8, width)),  # graphics setup: the picture {2560, 1440}
@@ -171,9 +170,9 @@ def picture_size(width):
     ]
 
 
-def edits(aspect, native=None):
+def edits(aspect):
     """(module offset, original word, new word)"""
-    out, cave = (picture_size(native) if native else []), CAVE_BASE
+    out, cave = picture_size(aspect), CAVE_BASE
     for hook, original, body, back in hooks(aspect):
         words = body + [branch(cave + 4 * len(body), back)]
         out.append((hook, original, branch(hook, cave)))
@@ -208,8 +207,8 @@ if __name__ == "__main__":
     args = p.parse_args()
     image = args.verify_main.read_bytes() if args.verify_main else None
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    for name, (zip_name, aspect, native) in VARIANTS.items():
-        recs = edits(aspect, native)
+    for name, (zip_name, aspect) in VARIANTS.items():
+        recs = edits(aspect)
         if image:
             for offset, original, _ in recs:
                 found = struct.unpack_from("<I", image, offset)[0]
