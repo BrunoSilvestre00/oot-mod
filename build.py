@@ -83,6 +83,7 @@ def ldr_x(xt, xn): return 0xF9400000 | xn << 5 | xt
 def add_x(xd, xn, imm): return 0x91000000 | imm << 10 | xn << 5 | xd
 def cmp_x(xn, xm): return 0xEB00001F | xm << 16 | xn << 5
 def b_eq(words): return 0x54000000 | (words & 0x7FFFF) << 5
+def lsl_x(xd, xn, sh): return 0xD3400000 | (-sh % 64) << 16 | (63 - sh) << 10 | xn << 5 | xd
 
 
 def adrp_add(xd, target):
@@ -155,6 +156,10 @@ def hooks(aspect):
         # NPC speech bubble anchor (layout x = ndc x * 1920): mov w8, #1920.0 -> 1920 / squash, so the
         # squeezed canvas puts the bubble back over its speaker
         (0x020C2B0, 0x52A89E08, [movz(8, f32(1920 / squash) & 0xFFFF), movk16(8, f32(1920 / squash) >> 16)], 0x020C2B4),
+        # graphics allocator setup: stp x8, x9, [sp, #16] stores the pool's initial size (x8). Doubled, as
+        # Lichii PR #976's "Texture Pool x2" does: the wider picture's render targets ran the pool out when
+        # an item was collected (a null target linked into a list, then an endless walk of it)
+        (0x0C2A36C, 0xA90127E8, [lsl_x(8, 8, 1), 0xA90127E8], 0x0C2A370),
     ]
 
 

@@ -44,7 +44,7 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 
 ## How it works
 
-The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46800`, after the space Lichii's built-in patches use) and branches to them from eight hook sites. Each hook reruns the instruction it replaced and jumps back.
+The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46800`, after the space Lichii's built-in patches use) and branches to them from nine hook sites. Each hook reruns the instruction it replaced and jumps back.
 
 Six more words set the size of the picture: `main+0x1202EE0` and `main+0x31F39F4` build the picture's size (`mov x8, #2560`, then `movk x8, #1440, lsl #32` for the height) and `main+0x31F3A00` the scene's (`#1920`, `#1080`), which is 3/4 of the picture. These are the same constants NX2navi (`wide_out` / `wide_scene`) and Hookshot patch.
 
@@ -56,6 +56,7 @@ Six more words set the size of the picture: `main+0x1202EE0` and `main+0x31F39F4
 | `0x0774368` | 2D canvas setup: if the projection is the full-screen 3840×2160 layout ortho, scale x by `(16/9) / target`. The backgrounds of the L/R item menu, pause menu and system menu are skipped, because they redraw a capture of the whole frame. So are the loading and cutscene fades, so they cover the sides |
 | `0x3B5C758` | Movie layer draw: shrink the full-target viewport to the centre `(16/9) / target` of the width |
 | `0x020C2B0` | NPC speech bubble anchor: the layout x of the speaker (`ndc.x × 1920`) is divided by the HUD squeeze, so the bubble sits over the speaker |
+| `0x0C2A36C` | Graphics allocator setup: the render-target pool's initial size is doubled, as Lichii's "Texture Pool x2" fix (PR #976) does. The wider picture's render targets ran the stock pool out when an item was collected, and the game froze |
 
 Offsets are module offsets. In the IPS32 files they are shifted by the `0x100`-byte NSO header. All routines only use registers that the original code overwrites immediately afterwards, or that are dead at that point.
 
