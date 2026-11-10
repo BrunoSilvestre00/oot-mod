@@ -9,8 +9,8 @@ Distributed as small IPS patches only. No game files are included.
 | Download | For screens | Target aspect | Game renders at |
 | --- | --- | --- | --- |
 | [`oot-ultrawide-21x9-3440x1440.zip`](releases/oot-ultrawide-21x9-3440x1440.zip) | 3440×1440 | 2.389 (43:18) | 3440×1440 |
-| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080, 5120×2160 | 2.370 (64:27) | 3416×1440 |
-| [`oot-super-ultrawide-32x9.zip`](releases/oot-super-ultrawide-32x9.zip) | 5120×1440, 3840×1080 | 3.556 (32:9) | 3440×1440 |
+| [`oot-ultrawide-21x9-2560x1080.zip`](releases/oot-ultrawide-21x9-2560x1080.zip) | 2560×1080, 5120×2160 | 2.370 (64:27) | 2560×1080 |
+| [`oot-super-ultrawide-32x9.zip`](releases/oot-super-ultrawide-32x9.zip) | 5120×1440, 3840×1080 | 3.556 (32:9) | 4096×1152 |
 
 Enable **only one** at a time, since they all patch the same code.
 
@@ -25,14 +25,14 @@ Enable **only one** at a time, since they all patch the same code.
 1. Download the zip for your screen from [`releases/`](releases/).
 2. In Lichii, right-click the game → **Properties → Add-Ons → Import Mod from ZIP**, select the zip and accept the suggested mod name. If you installed another version before, untick or delete it in the same list.
 3. In the same Properties window, set **Graphics → Aspect Ratio → Stretch to Window** and play fullscreen.
-   The emulator stretches the game's picture to your screen; the mod compensates for that, so nothing looks distorted.
+   The game renders a picture of your screen's shape, so the emulator scales it without distorting it.
 4. Restart the game. The emulator log should show `Applying IPS patch from mod "<mod name>"`.
 
 For other emulators, or to install by hand, extract the zip into the emulator's `load/` directory. It contains `0400486024DEC000/<mod name>/exefs/E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348.ips`.
 
 ## What it changes
 
-- **Resolution:** the picture the game renders (2560×1440, and the 1920×1080 scene its upscaler takes in) is widened to the target aspect at the same heights, up to 3440×1440, so the 3D and the HUD look sharper. This costs GPU time: the game draws about a third more pixels. 32:9 also renders 3440×1440 and the emulator stretches it to the screen, because a 5120×1440 picture ran out of the game's render-target memory and crashed.
+- **Resolution:** the picture the game renders (2560×1440, and the 1920×1080 scene its upscaler takes in, 3/4 of it) takes your screen's shape, so the 3D and the HUD are not stretched. 3440×1440 and 4096×1152 cost a bit more GPU time than the game's own picture; 2560×1080 costs less. 32:9 renders 4096×1152 because a 5120×1440 picture ran out of the game's render-target memory and crashed.
 - **3D:** every 16:9 camera projection is switched to the target aspect, so you see more to the sides instead of a stretched image. The new aspect is written back to the camera, so other systems that read it (e.g. culling) see the wider view too. Non-16:9 views such as cubemaps are left alone.
 - **HUD and menus:** full-screen 2D is drawn into the centre 16:9 area. Edge-anchored elements (hearts, buttons, minimap) sit at the edges of that area. Markers that track the 3D world, such as the Z-target reticle and NPC speech bubbles, stay in the right place. Menu backgrounds and fade transitions still cover the whole screen.
 - **Pre-rendered videos:** drawn in the centre 16:9 area instead of being stretched.
@@ -45,7 +45,7 @@ For other emulators, or to install by hand, extract the zip into the emulator's 
 
 The patch places small ARM64 routines in unused executable padding after `.text` (`main+0x3C46800`, after the space Lichii's built-in patches use) and branches to them from eight hook sites. Each hook reruns the instruction it replaced and jumps back.
 
-Three more words set the size of the picture: `main+0x1202EE0` and `main+0x31F39F4` (picture width, `mov x8, #2560`) and `main+0x31F3A00` (scene width, `mov x8, #1920`) get the target aspect's width (at most 3440×1440's), in whole multiples of 8 and 4 pixels. The heights, set by the `movk` after each, stay 1440 and 1080. These are the same constants NX2navi (`wide_out` / `wide_scene`) and Hookshot patch.
+Six more words set the size of the picture: `main+0x1202EE0` and `main+0x31F39F4` build the picture's size (`mov x8, #2560`, then `movk x8, #1440, lsl #32` for the height) and `main+0x31F3A00` the scene's (`#1920`, `#1080`), which is 3/4 of the picture. These are the same constants NX2navi (`wide_out` / `wide_scene`) and Hookshot patch.
 
 | Hook (`main+`) | Purpose |
 | --- | --- |
@@ -66,7 +66,7 @@ Offsets are module offsets. In the IPS32 files they are shifted by the `0x100`-b
 python3 build.py
 ```
 
-To add another aspect ratio, add an entry to `VARIANTS` in `build.py`: mod name, zip file name and target aspect.
+To add another aspect ratio, add an entry to `VARIANTS` in `build.py`: mod name, zip file name and the picture size to render. Its shape is the target aspect.
 
 If you have a decompressed image of the `main` module (module offset 0 = file offset 0), you can check every replaced instruction against it:
 

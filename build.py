@@ -4,12 +4,13 @@
 The game builds each sead::PerspectiveProjection matrix in sead's doUpdateMatrix or in one of
 three inlined copies of it. At every one of those sites an aspect within 0.01 of 16:9 is replaced
 by the target aspect (and written back to mAspect). The w/h aspect the renderer hands to shaders
-gets the same mapping. 1:1, 4:3 etc. views are untouched. The picture the game renders (2560x1440, scene 1920x1080) is widened to the target aspect at the same
-heights, up to 3440x1440, and the emulator stretches it to the screen. Full-screen 2D (the 3840x2160
-layout ortho, spread over the whole picture) is squeezed horizontally by (16/9)/target, so after that
-stretch the HUD sits undistorted in a centred 16:9 area. Pre-rendered movies get the same centred
-16:9 viewport. The render targets grow with the width: a 5120x1440 picture (32:9) ran out of the
-game's render-target memory and crashed, so 32:9 renders 3440x1440 too.
+gets the same mapping. 1:1, 4:3 etc. views are untouched.
+
+The picture the game renders (2560x1440, scene 1920x1080) takes the screen's shape: 3440x1440,
+2560x1080 or 4096x1152 (32:9; 5120x1440 ran out of the game's render-target memory and crashed).
+Full-screen 2D (the 3840x2160 layout ortho, spread over the whole picture) is squeezed horizontally
+by (16/9)/target, so the HUD sits undistorted in a centred 16:9 area. Pre-rendered movies get the
+same centred 16:9 viewport.
 
   python3 build.py                         # writes releases/<zip>.zip, each holding
                                            #   0400486024DEC000/<mod name>/exefs/<id>.ips
@@ -22,13 +23,11 @@ import zipfile
 
 TITLE_ID = "0400486024DEC000"
 BUILD_ID = "E0F3CCFAF50065AE4EA01EB5AEB13B1A45DA3348"
-VARIANTS = {  # mod folder name -> (zip file name, target display aspect)
-    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440 / 1440),
-    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560 / 1080),
-    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 32 / 9),
+VARIANTS = {  # mod folder name -> (zip file name, picture width, height); its w/h is the target display aspect
+    "Ultrawide 21x9 (3440x1440)": ("oot-ultrawide-21x9-3440x1440.zip", 3440, 1440),
+    "Ultrawide 21x9 (2560x1080)": ("oot-ultrawide-21x9-2560x1080.zip", 2560, 1080),
+    "Super Ultrawide 32x9": ("oot-super-ultrawide-32x9.zip", 4096, 1152),  # 5120x1440 crashed: out of render-target memory
 }
-PICTURE_H, SCENE_H = 1440, 1080  # the game's picture and scene heights (kept; only the widths grow)
-MAX_RENDER_ASPECT = 3440 / 1440  # widest picture that fits the game's render-target memory (5120x1440 crashed)
 NSO_HEADER_SIZE = 0x100
 CAVE_BASE = 0x3C46800  # zero executable padding after .text, up to 0x3C47000. Lichii's built-in
 # patches now use 0x3C46200..0x3C46494 (Dynamic FPS / FPS Unlock, texture pool, water steps,
@@ -53,6 +52,7 @@ FULL_FRAME_SCREENS = (
 # Minimal A64 encoders for the instructions used below.
 def movz(rd, imm): return 0x52800000 | imm << 5 | rd
 def movz_x(rd, imm): return 0xD2800000 | imm << 5 | rd
+def movk_x32(rd, imm): return 0xF2C00000 | imm << 5 | rd       # movk xd, #imm, lsl #32
 def movk16(rd, imm): return 0x72A00000 | imm << 5 | rd
 def fmov_sw(sd, wn): return 0x1E270000 | wn << 5 | sd
 def fsub(sd, sn, sm): return 0x1E203800 | sm << 16 | sn << 5 | sd
@@ -155,25 +155,26 @@ def hooks(aspect):
     ]
 
 
-def picture_size(aspect):
-    """(module offset, original word, new word): the picture and scene widths at the target aspect (at
-    most MAX_RENDER_ASPECT), in whole multiples of 8 / 4 pixels (3440 / 2580 at 3440x1440). Each is a mov x8 whose following movk
-    sets the height (1440 / 1080), left alone. The same sites as NX2navi's wide_out and wide_scene sets
-    (recomp/patches-v111.txt) and Hookshot's nx2/oot_wide.py."""
-    aspect = min(aspect, MAX_RENDER_ASPECT)
-    width, scene = 8 * round(PICTURE_H * aspect / 8), 4 * round(SCENE_H * aspect / 4)
+def picture_size(w, h):
+    """(module offset, original word, new word): the picture the game renders (2560x1440) and the scene
+    its upscaler takes in (1920x1080, 3/4 of it), each built in x8 by a mov (width) and a movk (height).
+    The same sites as NX2navi's wide_out / wide_scene (recomp/patches-v111.txt) and Hookshot's
+    nx2/oot_wide.py."""
+    assert w % 4 == 0 and h % 4 == 0
+    sw, sh = w * 3 // 4, h * 3 // 4
     assert movz_x(8, 2560) == 0xD2814008 and movz_x(8, 1920) == 0xD280F008
+    assert movk_x32(8, 1440) == 0xF2C0B408 and movk_x32(8, 1080) == 0xF2C08708
     return [
-        (0x1202EE0, movz_x(8, 2560), movz_x(8, width)),  # graphics setup: the picture {2560, 1440}
-        (0x31F39F4, movz_x(8, 2560), movz_x(8, width)),  # display settings: the picture
-        (0x31F3A00, movz_x(8, 1920), movz_x(8, scene)),  # display settings: the scene the upscaler takes in
+        (0x1202EE0, movz_x(8, 2560), movz_x(8, w)), (0x1202EE4, movk_x32(8, 1440), movk_x32(8, h)),  # graphics setup
+        (0x31F39F4, movz_x(8, 2560), movz_x(8, w)), (0x31F39F8, movk_x32(8, 1440), movk_x32(8, h)),  # display settings
+        (0x31F3A00, movz_x(8, 1920), movz_x(8, sw)), (0x31F3A04, movk_x32(8, 1080), movk_x32(8, sh)),  # the scene
     ]
 
 
-def edits(aspect):
+def edits(w, h):
     """(module offset, original word, new word)"""
-    out, cave = picture_size(aspect), CAVE_BASE
-    for hook, original, body, back in hooks(aspect):
+    out, cave = picture_size(w, h), CAVE_BASE
+    for hook, original, body, back in hooks(w / h):
         words = body + [branch(cave + 4 * len(body), back)]
         out.append((hook, original, branch(hook, cave)))
         out += [(cave + 4 * k, 0, w(cave + 4 * k) if callable(w) else w) for k, w in enumerate(words)]
@@ -207,8 +208,8 @@ if __name__ == "__main__":
     args = p.parse_args()
     image = args.verify_main.read_bytes() if args.verify_main else None
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    for name, (zip_name, aspect) in VARIANTS.items():
-        recs = edits(aspect)
+    for name, (zip_name, w, h) in VARIANTS.items():
+        recs = edits(w, h)
         if image:
             for offset, original, _ in recs:
                 found = struct.unpack_from("<I", image, offset)[0]
